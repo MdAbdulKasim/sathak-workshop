@@ -1,8 +1,29 @@
 import { Request, Response } from "express";
+import path from "path";
 import { UserService, ProductService } from "./usecase";
+import { uploadProductImage } from "./storage";
 
 const userService = new UserService();
 const productService = new ProductService();
+
+function parseFeatures(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      // fall through — treat as newline-separated text
+    }
+    return value
+      .split("\n")
+      .map((f) => f.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
 
 // -------------------- USER --------------------
 
@@ -175,7 +196,45 @@ export const deleteUser = async (req: Request, res: Response) => {
 
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const product = await productService.createProduct(req.body);
+    const { productName, description, category, price, stock } = req.body;
+    let image = (req.body.imageUrl || req.body.image || "") as string;
+
+    if (!productName || !description || !category || price === undefined) {
+      return res.status(400).json({
+        message: "productName, description, category and price are required",
+      });
+    }
+
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (file) {
+      const ext = path.extname(file.originalname) || ".jpg";
+      const objectPath = `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}${ext}`;
+      image = await uploadProductImage({
+        path: objectPath,
+        body: file.buffer,
+        contentType: file.mimetype,
+        upsert: true,
+      });
+    }
+
+    if (!image) {
+      return res.status(400).json({
+        message: "Provide an image file or imageUrl",
+      });
+    }
+
+    const product = await productService.createProduct({
+      productName,
+      description,
+      category,
+      price: Number(price),
+      image,
+      features: parseFeatures(req.body.features),
+      stock: Number(stock) || 0,
+    });
+
     return res.status(201).json({
       success: true,
       message: "Product created successfully",
@@ -243,14 +302,44 @@ export const getProductByCategory = async (req: Request, res: Response) => {
 
 export const updateProduct = async (req: Request, res: Response) => {
   try {
-    const updated = await productService.updateProduct(req.params.id, req.body);
+    const { productName, description, category, price, stock } = req.body;
+    let image = (req.body.imageUrl || req.body.image || undefined) as
+      | string
+      | undefined;
+
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (file) {
+      const ext = path.extname(file.originalname) || ".jpg";
+      const objectPath = `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}${ext}`;
+      image = await uploadProductImage({
+        path: objectPath,
+        body: file.buffer,
+        contentType: file.mimetype,
+        upsert: true,
+      });
+    }
+
+    const payload: Record<string, unknown> = {};
+    if (productName !== undefined) payload.productName = productName;
+    if (description !== undefined) payload.description = description;
+    if (category !== undefined) payload.category = category;
+    if (price !== undefined) payload.price = Number(price);
+    if (stock !== undefined) payload.stock = Number(stock) || 0;
+    if (req.body.features !== undefined) {
+      payload.features = parseFeatures(req.body.features);
+    }
+    if (image !== undefined) payload.image = image;
+
+    const updated = await productService.updateProduct(req.params.id, payload);
     if (!updated) {
       return res.status(404).json({ error: "Product not found" });
     }
 
     return res.status(200).json({ message: "Product updated", product: updated });
-  } catch (error) {
-    return res.status(500).json({ error: "Failed to update product" });
+  } catch (error: any) {
+    return res.status(500).json({ error: "Failed to update product", message: error.message });
   }
 };
 

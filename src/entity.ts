@@ -56,6 +56,15 @@ export class Product {
   @Column({ type: "decimal", precision: 10, scale: 2 })
   price!: number;
 
+  @Column({ type: "varchar", length: 255 })
+  image!: string;
+
+  @Column({ type: "simple-json", default: [] })
+  features!: string[];
+
+  @Column({ type: "int", default: 0 })
+  stock!: number;
+
   @CreateDateColumn()
   createdAt!: Date;
 

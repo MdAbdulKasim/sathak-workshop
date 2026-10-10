@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   createUser,
   login,
@@ -21,6 +22,10 @@ import {
 } from "./controller";
 
 const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // ---------- User Auth ----------
 router.post("/users", createUser);
@@ -38,12 +43,12 @@ router.put("/users/:id", updateUser);
 router.delete("/users/:id", deleteUser);
 
 // ---------- Product CRUD ----------
-router.post("/products", createProduct);
+router.post("/products", upload.single("image"), createProduct);
 router.get("/products", getAllProducts);
 router.get("/products/id/:id", getProductById);
 router.get("/products/name/:name", getProductByName);
 router.get("/products/category/:category", getProductByCategory);
-router.put("/products/:id", updateProduct);
+router.put("/products/:id", upload.single("image"), updateProduct);
 router.delete("/products/:id", deleteProduct);
 
 export default router;
